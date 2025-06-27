@@ -1,112 +1,91 @@
 const express = require('express');
-const { Pool } = require('pg');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const multer = require('multer');
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
+
+// Middleware
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
+const authRoutes = require('./routes/auth');
+const reportsRoutes = require('./routes/reports');
+
+// API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/reports', reportsRoutes);
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'LaporFIK API is running',
+    timestamp: new Date().toISOString()
+  });
 });
 
-app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const result = await pool.query(
-      'SELECT id, username, role, email FROM users WHERE username = $1 AND password = $2',
-      [username, password]
-    );
-    if (result.rows.length === 1) {
-      const user = result.rows[0];
-      const token = uuidv4();
-      return res.json({ 
-        success: true, 
-        token: token, 
-        role: user.role,
-        message: 'Login successful'
-      });
-    } else {
-      return res.status(401).json({ 
-        success: false, 
-        token: null, 
-        role: null,
-        message: 'Invalid credentials' 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  
+  // Handle multer errors
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File too large. Maximum size is 5MB.'
       });
     }
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ 
-      success: false, 
-      token: null, 
-      role: null,
-      message: 'Server error' 
-    });
-  }
-});
-
-// Get user profile (requires authentication)
-app.get('/user/profile', async (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-  
-  try {
-    // In a real app, you would validate the token against a sessions table
-    // For now, we'll just return a mock user profile
-    const result = await pool.query(
-      'SELECT id, username, role, email FROM users WHERE username = $1',
-      [req.query.username || 'admin']
-    );
-    
-    if (result.rows.length === 1) {
-      const user = result.rows[0];
-      return res.json({
-        success: true,
-        user: {
-          id: user.id,
-          username: user.username,
-          role: user.role,
-          email: user.email
-        }
-      });
-    } else {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        success: false,
+        message: 'Too many files. Maximum is 5 files.'
       });
     }
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Server error' 
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Unexpected file field.'
+      });
+    }
+  }
+  
+  // Handle other file upload errors
+  if (err.message && err.message.includes('Only image files are allowed')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Only image files are allowed!'
     });
   }
+  
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error'
+  });
 });
 
-// Get recent feedback (public endpoint - no authentication required)
-app.get('/feedback/recent', async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT id, category, title, date, description, status FROM feedback ORDER BY date DESC LIMIT 10'
-    );
-    return res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Server error' });
-  }
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Endpoint not found'
+  });
 });
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 LaporFIK API Server running on port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`📁 Uploads served at: http://localhost:${PORT}/uploads/`);
 }); 

@@ -7,32 +7,35 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
+    nama VARCHAR(100) NOT NULL,
+    nim VARCHAR(20) UNIQUE NOT NULL,
+    jurusan VARCHAR(100) NOT NULL,
     password VARCHAR(255) NOT NULL,
-    role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    gmail VARCHAR(100) DEFAULT NULL,
+    profile_url VARCHAR(500) DEFAULT NULL,
+    role VARCHAR(20) DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Feedback table
-CREATE TABLE IF NOT EXISTS feedback (
+-- Reports table
+CREATE TABLE IF NOT EXISTS reports (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    category VARCHAR(50) NOT NULL,
-    title VARCHAR(200) NOT NULL,
-    description TEXT NOT NULL,
-    priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'resolved', 'rejected')),
-    admin_response TEXT,
+    kategori VARCHAR(50) NOT NULL,
+    judul VARCHAR(200) NOT NULL,
+    rincian TEXT NOT NULL,
+    images TEXT[] DEFAULT '{}',
+    status VARCHAR(20) DEFAULT 'pending',
+    feedback TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Feedback messages/comments table
-CREATE TABLE IF NOT EXISTS feedback_messages (
+-- Report messages table for admin-user communication
+CREATE TABLE IF NOT EXISTS report_messages (
     id SERIAL PRIMARY KEY,
-    feedback_id INTEGER REFERENCES feedback(id) ON DELETE CASCADE,
+    report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     message TEXT NOT NULL,
     is_admin_message BOOLEAN DEFAULT FALSE,
@@ -40,14 +43,14 @@ CREATE TABLE IF NOT EXISTS feedback_messages (
 );
 
 -- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
-CREATE INDEX IF NOT EXISTS idx_feedback_category ON feedback(category);
-CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at);
-CREATE INDEX IF NOT EXISTS idx_feedback_messages_feedback_id ON feedback_messages(feedback_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_messages_user_id ON feedback_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_users_nim ON users(nim);
+CREATE INDEX IF NOT EXISTS idx_users_gmail ON users(gmail);
+CREATE INDEX IF NOT EXISTS idx_reports_user_id ON reports(user_id);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+CREATE INDEX IF NOT EXISTS idx_reports_kategori ON reports(kategori);
+CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at);
+CREATE INDEX IF NOT EXISTS idx_report_messages_report_id ON report_messages(report_id);
+CREATE INDEX IF NOT EXISTS idx_report_messages_user_id ON report_messages(user_id);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -62,18 +65,11 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_feedback_updated_at BEFORE UPDATE ON feedback
+CREATE TRIGGER update_reports_updated_at BEFORE UPDATE ON reports
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert default admin user (password: admin123)
 -- You should change this password after first login
-INSERT INTO users (username, email, password, role) VALUES 
-('admin', 'admin@laporfik.com', '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.iK8O', 'admin')
-ON CONFLICT (username) DO NOTHING;
-
--- Insert sample feedback categories
--- You can modify these based on your needs
-INSERT INTO feedback (user_id, category, title, description, priority, status) VALUES 
-(1, 'Infrastructure', 'Sample Infrastructure Issue', 'This is a sample infrastructure feedback for testing purposes.', 'medium', 'pending'),
-(1, 'Academic', 'Sample Academic Feedback', 'This is a sample academic feedback for testing purposes.', 'high', 'in_progress')
-ON CONFLICT DO NOTHING; 
+INSERT INTO users (nama, nim, jurusan, password, gmail, role) VALUES 
+('Administrator', '0000000000', 'Teknik Informatika', '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.iK8O', 'admin@laporfik.com', 'admin')
+ON CONFLICT (nim) DO NOTHING; 
