@@ -70,7 +70,7 @@ router.post('/register', async (req, res) => {
     // Create user
     const result = await pool.query(
       'INSERT INTO users (nama, nim, jurusan, password, gmail, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nama, nim, jurusan, gmail, role',
-      [nama, nim, hashedPassword, jurusan, gmail, 'user']
+      [nama, nim, jurusan, hashedPassword, gmail, 'user']
     );
 
     const user = result.rows[0];
