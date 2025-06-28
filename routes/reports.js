@@ -419,8 +419,11 @@ router.get('/latest', authenticateToken, async (req, res) => {
   try {
     const { limit = 2 } = req.query;
     
+    console.log('🔍 Latest reports request:', { limit, user: req.user });
+    
     // Check if user is admin
     if (req.user.role !== 'admin') {
+      console.log('❌ Access denied: User is not admin');
       return res.status(403).json({
         success: false,
         message: 'Admin access required'
@@ -435,7 +438,9 @@ router.get('/latest', authenticateToken, async (req, res) => {
       LIMIT $1
     `;
 
+    console.log('📝 Executing query:', query);
     const result = await pool.query(query, [parseInt(limit)]);
+    console.log('✅ Query result:', result.rows.length, 'reports found');
 
     res.json({
       success: true,
@@ -443,10 +448,16 @@ router.get('/latest', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get latest reports error:', error);
+    console.error('❌ Get latest reports error:', error);
+    console.error('📋 Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -454,13 +465,18 @@ router.get('/latest', authenticateToken, async (req, res) => {
 // Get report statistics
 router.get('/stats', authenticateToken, async (req, res) => {
   try {
+    console.log('📊 Stats request from user:', req.user);
+    
     // Check if user is admin
     if (req.user.role !== 'admin') {
+      console.log('❌ Access denied: User is not admin');
       return res.status(403).json({
         success: false,
         message: 'Admin access required'
       });
     }
+
+    console.log('📝 Executing stats queries...');
 
     // Get today's reports
     const todayQuery = `
@@ -496,21 +512,31 @@ router.get('/stats', authenticateToken, async (req, res) => {
       pool.query(unreadQuery)
     ]);
 
+    const stats = {
+      today: parseInt(todayResult.rows[0].count),
+      this_week: parseInt(weekResult.rows[0].count),
+      all_time: parseInt(allTimeResult.rows[0].count),
+      unread_count: parseInt(unreadResult.rows[0].count)
+    };
+
+    console.log('✅ Stats calculated:', stats);
+
     res.json({
       success: true,
-      stats: {
-        today: parseInt(todayResult.rows[0].count),
-        this_week: parseInt(weekResult.rows[0].count),
-        all_time: parseInt(allTimeResult.rows[0].count),
-        unread_count: parseInt(unreadResult.rows[0].count)
-      }
+      stats
     });
 
   } catch (error) {
-    console.error('Get report stats error:', error);
+    console.error('❌ Get report stats error:', error);
+    console.error('📋 Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
