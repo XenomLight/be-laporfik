@@ -76,7 +76,7 @@ router.post('/', authenticateToken, uploadReportImages, async (req, res) => {
 // Get all reports (admin only)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { status, kategori, page = 1, limit = 10 } = req.query;
+    const { status, kategori, page = 1, limit = 10, sort = 'created_at', order = 'desc' } = req.query;
     const offset = (page - 1) * limit;
 
     let query = `
@@ -107,7 +107,12 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     // Add ordering and pagination
-    query += ' ORDER BY r.created_at DESC LIMIT $' + (queryParams.length + 1) + ' OFFSET $' + (queryParams.length + 2);
+    const validSortFields = ['created_at', 'judul', 'status', 'kategori'];
+    const validOrders = ['asc', 'desc'];
+    const sortField = validSortFields.includes(sort) ? sort : 'created_at';
+    const sortOrder = validOrders.includes(order.toLowerCase()) ? order.toUpperCase() : 'DESC';
+    
+    query += ` ORDER BY r.${sortField} ${sortOrder} LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
     queryParams.push(parseInt(limit), offset);
 
     // Execute queries
@@ -402,6 +407,107 @@ router.get('/:id/messages', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('Get messages error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Get latest reports (for notifications)
+router.get('/latest', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 2 } = req.query;
+    
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required'
+      });
+    }
+
+    const query = `
+      SELECT r.*, u.nama as user_nama, u.nim as user_nim, u.jurusan as user_jurusan
+      FROM reports r
+      JOIN users u ON r.user_id = u.id
+      ORDER BY r.created_at DESC
+      LIMIT $1
+    `;
+
+    const result = await pool.query(query, [parseInt(limit)]);
+
+    res.json({
+      success: true,
+      reports: result.rows
+    });
+
+  } catch (error) {
+    console.error('Get latest reports error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Get report statistics
+router.get('/stats', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access required'
+      });
+    }
+
+    // Get today's reports
+    const todayQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+      WHERE DATE(created_at) = CURRENT_DATE
+    `;
+
+    // Get this week's reports
+    const weekQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+      WHERE created_at >= DATE_TRUNC('week', CURRENT_DATE)
+    `;
+
+    // Get all time reports
+    const allTimeQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+    `;
+
+    // Get unread reports (pending status)
+    const unreadQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+      WHERE status = 'pending'
+    `;
+
+    const [todayResult, weekResult, allTimeResult, unreadResult] = await Promise.all([
+      pool.query(todayQuery),
+      pool.query(weekQuery),
+      pool.query(allTimeQuery),
+      pool.query(unreadQuery)
+    ]);
+
+    res.json({
+      success: true,
+      stats: {
+        today: parseInt(todayResult.rows[0].count),
+        this_week: parseInt(weekResult.rows[0].count),
+        all_time: parseInt(allTimeResult.rows[0].count),
+        unread_count: parseInt(unreadResult.rows[0].count)
+      }
+    });
+
+  } catch (error) {
+    console.error('Get report stats error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
