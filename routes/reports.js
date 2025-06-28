@@ -61,11 +61,71 @@ router.post('/', authenticateToken, uploadReportImages, async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Report created successfully',
-      report
+      report_id: report.id
     });
 
   } catch (error) {
     console.error('Create report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Upload images to existing report
+router.post('/upload-images', authenticateToken, uploadReportImages, async (req, res) => {
+  try {
+    const { report_id } = req.body;
+    const userId = req.user.id;
+
+    // Validation
+    if (!report_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Report ID is required'
+      });
+    }
+
+    // Check if report exists and belongs to user
+    const reportCheck = await pool.query(
+      'SELECT * FROM reports WHERE id = $1 AND user_id = $2',
+      [report_id, userId]
+    );
+
+    if (reportCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Report not found or access denied'
+      });
+    }
+
+    const report = reportCheck.rows[0];
+
+    // Process uploaded images
+    let newImageUrls = [];
+    if (req.files && req.files.length > 0) {
+      const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      newImageUrls = req.files.map(file => `${baseUrl}/uploads/${file.filename}`);
+    }
+
+    // Combine existing images with new ones
+    const existingImages = report.images || [];
+    const allImages = [...existingImages, ...newImageUrls];
+
+    // Update report with new images
+    await pool.query(
+      'UPDATE reports SET images = $1 WHERE id = $2',
+      [allImages, report_id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Images uploaded successfully'
+    });
+
+  } catch (error) {
+    console.error('Upload images error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
@@ -419,8 +479,11 @@ router.get('/latest', authenticateToken, async (req, res) => {
   try {
     const { limit = 2 } = req.query;
     
+    console.log('🔍 Latest reports request:', { limit, user: req.user });
+    
     // Check if user is admin
     if (req.user.role !== 'admin') {
+      console.log('❌ Access denied: User is not admin');
       return res.status(403).json({
         success: false,
         message: 'Admin access required'
@@ -435,7 +498,9 @@ router.get('/latest', authenticateToken, async (req, res) => {
       LIMIT $1
     `;
 
+    console.log('📝 Executing query:', query);
     const result = await pool.query(query, [parseInt(limit)]);
+    console.log('✅ Query result:', result.rows.length, 'reports found');
 
     res.json({
       success: true,
@@ -443,10 +508,16 @@ router.get('/latest', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get latest reports error:', error);
+    console.error('❌ Get latest reports error:', error);
+    console.error('📋 Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -454,13 +525,18 @@ router.get('/latest', authenticateToken, async (req, res) => {
 // Get report statistics
 router.get('/stats', authenticateToken, async (req, res) => {
   try {
+    console.log('📊 Stats request from user:', req.user);
+    
     // Check if user is admin
     if (req.user.role !== 'admin') {
+      console.log('❌ Access denied: User is not admin');
       return res.status(403).json({
         success: false,
         message: 'Admin access required'
       });
     }
+
+    console.log('📝 Executing stats queries...');
 
     // Get today's reports
     const todayQuery = `
@@ -496,21 +572,31 @@ router.get('/stats', authenticateToken, async (req, res) => {
       pool.query(unreadQuery)
     ]);
 
+    const stats = {
+      today: parseInt(todayResult.rows[0].count),
+      this_week: parseInt(weekResult.rows[0].count),
+      all_time: parseInt(allTimeResult.rows[0].count),
+      unread_count: parseInt(unreadResult.rows[0].count)
+    };
+
+    console.log('✅ Stats calculated:', stats);
+
     res.json({
       success: true,
-      stats: {
-        today: parseInt(todayResult.rows[0].count),
-        this_week: parseInt(weekResult.rows[0].count),
-        all_time: parseInt(allTimeResult.rows[0].count),
-        unread_count: parseInt(unreadResult.rows[0].count)
-      }
+      stats
     });
 
   } catch (error) {
-    console.error('Get report stats error:', error);
+    console.error('❌ Get report stats error:', error);
+    console.error('📋 Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
