@@ -29,6 +29,17 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Middleware to require admin access
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access required",
+    });
+  }
+  next();
+};
+
 // Create a new report with images
 router.post("/", authenticateToken, uploadReportImages, async (req, res) => {
   try {
@@ -63,13 +74,8 @@ router.post("/", authenticateToken, uploadReportImages, async (req, res) => {
 
     res.status(201).json({
       success: true,
-<<<<<<< HEAD
       message: "Report created successfully",
-      report,
-=======
-      message: 'Report created successfully',
       report_id: report.id
->>>>>>> 44b8b39de514b61769e3a4bf1a9dfb349ab88703
     });
   } catch (error) {
     console.error("Create report error:", error);
@@ -81,7 +87,7 @@ router.post("/", authenticateToken, uploadReportImages, async (req, res) => {
 });
 
 // Upload images to existing report
-router.post('/upload-images', authenticateToken, uploadReportImages, async (req, res) => {
+router.post("/upload-images", authenticateToken, uploadReportImages, async (req, res) => {
   try {
     const { report_id } = req.body;
     const userId = req.user.id;
@@ -90,20 +96,20 @@ router.post('/upload-images', authenticateToken, uploadReportImages, async (req,
     if (!report_id) {
       return res.status(400).json({
         success: false,
-        message: 'Report ID is required'
+        message: "Report ID is required"
       });
     }
 
     // Check if report exists and belongs to user
     const reportCheck = await pool.query(
-      'SELECT * FROM reports WHERE id = $1 AND user_id = $2',
+      "SELECT * FROM reports WHERE id = $1 AND user_id = $2",
       [report_id, userId]
     );
 
     if (reportCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Report not found or access denied'
+        message: "Report not found or access denied"
       });
     }
 
@@ -122,20 +128,20 @@ router.post('/upload-images', authenticateToken, uploadReportImages, async (req,
 
     // Update report with new images
     await pool.query(
-      'UPDATE reports SET images = $1 WHERE id = $2',
+      "UPDATE reports SET images = $1 WHERE id = $2",
       [allImages, report_id]
     );
 
     res.json({
       success: true,
-      message: 'Images uploaded successfully'
+      message: "Images uploaded successfully"
     });
 
   } catch (error) {
-    console.error('Upload images error:', error);
+    console.error("Upload images error:", error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: "Internal server error"
     });
   }
 });
@@ -143,7 +149,7 @@ router.post('/upload-images', authenticateToken, uploadReportImages, async (req,
 // Get all reports (admin only)
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const { status, kategori, page = 1, limit = 10, sort = 'created_at', order = 'desc' } = req.query;
+    const { status, kategori, page = 1, limit = 10, sort = "created_at", order = "desc" } = req.query;
     const offset = (page - 1) * limit;
 
     let query = `
@@ -175,15 +181,10 @@ router.get("/", authenticateToken, async (req, res) => {
     }
 
     // Add ordering and pagination
-    query +=
-      " ORDER BY r.created_at DESC LIMIT $" +
-      (queryParams.length + 1) +
-      " OFFSET $" +
-      (queryParams.length + 2);
-    const validSortFields = ['created_at', 'judul', 'status', 'kategori'];
-    const validOrders = ['asc', 'desc'];
-    const sortField = validSortFields.includes(sort) ? sort : 'created_at';
-    const sortOrder = validOrders.includes(order.toLowerCase()) ? order.toUpperCase() : 'DESC';
+    const validSortFields = ["created_at", "judul", "status", "kategori"];
+    const validOrders = ["asc", "desc"];
+    const sortField = validSortFields.includes(sort) ? sort : "created_at";
+    const sortOrder = validOrders.includes(order.toLowerCase()) ? order.toUpperCase() : "DESC";
     
     query += ` ORDER BY r.${sortField} ${sortOrder} LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
     queryParams.push(parseInt(limit), offset);
@@ -268,6 +269,133 @@ router.get("/my-reports", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+});
+
+// Get latest reports (for notifications)
+router.get("/latest", authenticateToken, async (req, res) => {
+  try {
+    const { limit = 2 } = req.query;
+    
+    console.log("🔍 Latest reports request:", { limit, user: req.user });
+    
+    // Check if user is admin
+    if (req.user.role !== "admin") {
+      console.log("❌ Access denied: User is not admin");
+      return res.status(403).json({
+        success: false,
+        message: "Admin access required"
+      });
+    }
+
+    const query = `
+      SELECT r.*, u.nama as user_nama, u.nim as user_nim, u.jurusan as user_jurusan
+      FROM reports r
+      JOIN users u ON r.user_id = u.id
+      ORDER BY r.created_at DESC
+      LIMIT $1
+    `;
+
+    console.log("📝 Executing query:", query);
+    const result = await pool.query(query, [parseInt(limit)]);
+    console.log("✅ Query result:", result.rows.length, "reports found");
+
+    res.json({
+      success: true,
+      reports: result.rows
+    });
+
+  } catch (error) {
+    console.error("❌ Get latest reports error:", error);
+    console.error("📋 Error details:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+});
+
+// Get report statistics
+router.get("/stats", authenticateToken, async (req, res) => {
+  try {
+    console.log("📊 Stats request from user:", req.user);
+    
+    // Check if user is admin
+    if (req.user.role !== "admin") {
+      console.log("❌ Access denied: User is not admin");
+      return res.status(403).json({
+        success: false,
+        message: "Admin access required"
+      });
+    }
+
+    console.log("📝 Executing stats queries...");
+
+    // Get today's reports
+    const todayQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+      WHERE DATE(created_at) = CURRENT_DATE
+    `;
+
+    // Get this week's reports
+    const weekQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+      WHERE created_at >= DATE_TRUNC("week", CURRENT_DATE)
+    `;
+
+    // Get all time reports
+    const allTimeQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+    `;
+
+    // Get unread reports (pending status)
+    const unreadQuery = `
+      SELECT COUNT(*) as count
+      FROM reports
+      WHERE status = "pending"
+    `;
+
+    const [todayResult, weekResult, allTimeResult, unreadResult] = await Promise.all([
+      pool.query(todayQuery),
+      pool.query(weekQuery),
+      pool.query(allTimeQuery),
+      pool.query(unreadQuery)
+    ]);
+
+    const stats = {
+      today: parseInt(todayResult.rows[0].count),
+      this_week: parseInt(weekResult.rows[0].count),
+      all_time: parseInt(allTimeResult.rows[0].count),
+      unread_count: parseInt(unreadResult.rows[0].count)
+    };
+
+    console.log("✅ Stats calculated:", stats);
+
+    res.json({
+      success: true,
+      stats
+    });
+
+  } catch (error) {
+    console.error("❌ Get report stats error:", error);
+    console.error("📋 Error details:", {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
 });
@@ -504,7 +632,7 @@ router.patch("/:id/resolve", authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      `UPDATE reports SET status = 'resolved', updated_at = NOW() WHERE id = $1 RETURNING *`,
+      `UPDATE reports SET status = "resolved", updated_at = NOW() WHERE id = $1 RETURNING *`,
       [id]
     );
 
@@ -575,135 +703,4 @@ router.get("/:id/messages", authenticateToken, async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
 module.exports = router;
-=======
-// Get latest reports (for notifications)
-router.get('/latest', authenticateToken, async (req, res) => {
-  try {
-    const { limit = 2 } = req.query;
-    
-    console.log('🔍 Latest reports request:', { limit, user: req.user });
-    
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      console.log('❌ Access denied: User is not admin');
-      return res.status(403).json({
-        success: false,
-        message: 'Admin access required'
-      });
-    }
-
-    const query = `
-      SELECT r.*, u.nama as user_nama, u.nim as user_nim, u.jurusan as user_jurusan
-      FROM reports r
-      JOIN users u ON r.user_id = u.id
-      ORDER BY r.created_at DESC
-      LIMIT $1
-    `;
-
-    console.log('📝 Executing query:', query);
-    const result = await pool.query(query, [parseInt(limit)]);
-    console.log('✅ Query result:', result.rows.length, 'reports found');
-
-    res.json({
-      success: true,
-      reports: result.rows
-    });
-
-  } catch (error) {
-    console.error('❌ Get latest reports error:', error);
-    console.error('📋 Error details:', {
-      message: error.message,
-      stack: error.stack,
-      code: error.code
-    });
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-// Get report statistics
-router.get('/stats', authenticateToken, async (req, res) => {
-  try {
-    console.log('📊 Stats request from user:', req.user);
-    
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      console.log('❌ Access denied: User is not admin');
-      return res.status(403).json({
-        success: false,
-        message: 'Admin access required'
-      });
-    }
-
-    console.log('📝 Executing stats queries...');
-
-    // Get today's reports
-    const todayQuery = `
-      SELECT COUNT(*) as count
-      FROM reports
-      WHERE DATE(created_at) = CURRENT_DATE
-    `;
-
-    // Get this week's reports
-    const weekQuery = `
-      SELECT COUNT(*) as count
-      FROM reports
-      WHERE created_at >= DATE_TRUNC('week', CURRENT_DATE)
-    `;
-
-    // Get all time reports
-    const allTimeQuery = `
-      SELECT COUNT(*) as count
-      FROM reports
-    `;
-
-    // Get unread reports (pending status)
-    const unreadQuery = `
-      SELECT COUNT(*) as count
-      FROM reports
-      WHERE status = 'pending'
-    `;
-
-    const [todayResult, weekResult, allTimeResult, unreadResult] = await Promise.all([
-      pool.query(todayQuery),
-      pool.query(weekQuery),
-      pool.query(allTimeQuery),
-      pool.query(unreadQuery)
-    ]);
-
-    const stats = {
-      today: parseInt(todayResult.rows[0].count),
-      this_week: parseInt(weekResult.rows[0].count),
-      all_time: parseInt(allTimeResult.rows[0].count),
-      unread_count: parseInt(unreadResult.rows[0].count)
-    };
-
-    console.log('✅ Stats calculated:', stats);
-
-    res.json({
-      success: true,
-      stats
-    });
-
-  } catch (error) {
-    console.error('❌ Get report stats error:', error);
-    console.error('📋 Error details:', {
-      message: error.message,
-      stack: error.stack,
-      code: error.code
-    });
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-module.exports = router; 
->>>>>>> 44b8b39de514b61769e3a4bf1a9dfb349ab88703
