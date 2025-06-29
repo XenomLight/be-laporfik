@@ -409,7 +409,7 @@ router.get("/stats", authenticateToken, async (req, res) => {
     const unreadQuery = `
       SELECT COUNT(*) as count
       FROM reports
-      WHERE status = "pending"
+      WHERE status = 'pending'
     `;
 
     const [todayResult, weekResult, allTimeResult, unreadResult] = await Promise.all([
@@ -680,7 +680,7 @@ router.patch("/:id/resolve", authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      `UPDATE reports SET status = "resolved", updated_at = NOW() WHERE id = $1 RETURNING *`,
+      `UPDATE reports SET status = 'resolved', updated_at = NOW() WHERE id = $1 RETURNING *`,
       [id]
     );
 
