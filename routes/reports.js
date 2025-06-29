@@ -396,7 +396,7 @@ router.get("/stats", authenticateToken, async (req, res) => {
     const weekQuery = `
       SELECT COUNT(*) as count
       FROM reports
-      WHERE created_at >= DATE_TRUNC("week", CURRENT_DATE)
+      WHERE created_at >= DATE_TRUNC('week', CURRENT_DATE)
     `;
 
     // Get all time reports
