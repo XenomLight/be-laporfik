@@ -146,10 +146,58 @@ router.post("/upload-images", authenticateToken, uploadReportImages, async (req,
   }
 });
 
-// Get all reports (admin only)
-router.get("/", authenticateToken, async (req, res) => {
+// Get all reports (admin only) or public recent reports
+router.get("/", async (req, res) => {
   try {
-    const { status, kategori, page = 1, limit = 10, sort = "created_at", order = "desc" } = req.query;
+    const { status, kategori, page = 1, limit = 10, sort = "created_at", order = "desc", public } = req.query;
+    
+    // If public parameter is passed, allow access without authentication
+    if (public === "true") {
+      console.log("🔍 Public reports request:", { limit, public });
+      const publicLimit = Math.min(parseInt(limit) || 5, 10); // Limit to max 10 for public access
+      
+      const query = `
+        SELECT r.id, r.kategori, r.judul, r.rincian, r.status, r.created_at, r.updated_at,
+               u.nama as user_nama, u.nim as user_nim, u.jurusan as user_jurusan
+        FROM reports r
+        JOIN users u ON r.user_id = u.id
+        ORDER BY r.created_at DESC
+        LIMIT $1
+      `;
+      
+      console.log("📝 Executing public query:", query, "with limit:", publicLimit);
+      const result = await pool.query(query, [publicLimit]);
+      console.log("✅ Public query result:", result.rows.length, "reports found");
+      
+      res.json({
+        success: true,
+        reports: result.rows,
+        message: "Recent reports retrieved successfully"
+      });
+      return;
+    }
+    
+    // For authenticated requests, require authentication
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Access token required",
+      });
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+      if (err) {
+        return res.status(403).json({
+          success: false,
+          message: "Invalid or expired token",
+        });
+      }
+      req.user = user;
+    });
+
     const offset = (page - 1) * limit;
 
     let query = `
