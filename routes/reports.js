@@ -703,4 +703,34 @@ router.get("/:id/messages", authenticateToken, async (req, res) => {
   }
 });
 
+// Get recent reports (public - no authentication required)
+router.get("/recent", async (req, res) => {
+  try {
+    const { limit = 5 } = req.query;
+    
+    const query = `
+      SELECT r.id, r.kategori, r.judul, r.rincian, r.status, r.created_at, r.updated_at,
+             u.nama as user_nama, u.nim as user_nim, u.jurusan as user_jurusan
+      FROM reports r
+      JOIN users u ON r.user_id = u.id
+      ORDER BY r.created_at DESC
+      LIMIT $1
+    `;
+    
+    const result = await pool.query(query, [parseInt(limit)]);
+    
+    res.json({
+      success: true,
+      reports: result.rows,
+      message: "Recent reports retrieved successfully"
+    });
+  } catch (error) {
+    console.error("Get recent reports error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+});
+
 module.exports = router;
