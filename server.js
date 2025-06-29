@@ -11,6 +11,7 @@ const { testConnection } = require('./config/database');
 const authRoutes = require('./routes/auth');
 const feedbackRoutes = require('./routes/feedback');
 const userRoutes = require('./routes/user');
+const reportsRoutes = require('./routes/reports');
 
 const app = express();
 
@@ -97,7 +98,8 @@ app.get('/', (req, res) => {
       health: '/health',
       auth: '/api/auth',
       feedback: '/api/feedback',
-      user: '/api/user'
+      user: '/api/user',
+      reports: '/api/reports'
     }
   });
 });
@@ -106,6 +108,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
